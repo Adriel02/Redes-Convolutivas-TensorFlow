@@ -28,8 +28,8 @@ def dataSource(paths,batch_size):
     min_after_dequeue = 10
     capacity=min_after_dequeue + 3 * batch_size
 
-    example_batch_list = []
-    label_batch_list = []
+    example_batch_list = [] #almacena muestras
+    label_batch_list = [] #almacena etiquetas
 
     for i, p in enumerate(paths):
         filename= tf.train.match_filenames_once(p)
@@ -43,7 +43,7 @@ def dataSource(paths,batch_size):
         image = tf.image.resize_image_with_crop_or_pad(image, 80, 140)
         image=tf.image.rgb_to_grayscale(image)
         image = tf.reshape(image, [80, 140, 1])
-        image = tf.to_float(image) / 256. - 0.5
+        image = tf.to_float(image) / 255. - 0.5
         example_batch, label_batch = tf.train.shuffle_batch([image, label], batch_size=batch_size, capacity=capacity, min_after_dequeue=min_after_dequeue)
         example_batch_list.append(example_batch)
         label_batch_list.append(label_batch)
@@ -69,8 +69,7 @@ def myModel(X,reuse=False):
 
 
         h = tf.layers.dense(inputs=tf.reshape(o4, [batch_size*3, 33 * 18 * 64]), units=5, activation=tf.nn.relu)
-        h2 = tf.layers.dense(inputs=h, units=3, activation=tf.nn.relu)
-        y = tf.layers.dense(inputs=h2, units=3, activation=tf.nn.softmax)
+        y = tf.layers.dense(inputs=h, units=3, activation=tf.nn.softmax)
     return y
 
 #example_batch_train, label_batch_train = dataSource(["data3/Circulo/*.jpg", "data3/Cuadrado/*.jpg", "data3/Triangulo/*.jpg"], batch_size=batch_size)
@@ -89,7 +88,7 @@ cost = tf.reduce_sum(tf.square(example_batch_train_predicted - tf.cast(label_bat
 cost_valid = tf.reduce_sum(tf.square(example_batch_valid_predicted - tf.cast(label_batch_valid, dtype=tf.float32)))
 cost_test = tf.reduce_sum(tf.square(example_batch_test_predicted - tf.cast(label_batch_test, dtype=tf.float32)))
 # cost = tf.reduce_mean(-tf.reduce_sum(label_batch * tf.log(y), reduction_indices=[1]))
-optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.02).minimize(cost)
+optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.01).minimize(cost)
 # --------------------------------------------------
 #
 #       TRAINING
@@ -114,9 +113,11 @@ with tf.Session() as sess:
 
     error_train = []
     error_valid = []
+    diferenciaerror=100.0
 
-
-    """Rutina de entrenamiento"""
+    print "----------------------"
+    print "   Train result...     "
+    print "----------------------"
     for _ in range(200):
         sess.run(optimizer)
         if _ % 20 == 0:
@@ -125,23 +126,27 @@ with tf.Session() as sess:
             error_valid.append(sess.run(cost_valid))
             print ("Error Entrenamiento:", sess.run(cost))
             print("Error Validacion:", sess.run(cost_valid))
+            print("-------------------------------------------------------------------------")
+            if(_>1):
+                diferenciaerror=error_valid[-1]-sess.run(cost_valid)
+            if diferenciaerror<0.001:
+                break
+    print "----------------------"
+    print "   Test result...     "
+    print "----------------------"
+
     total = 0.0
     error = 0.0
-    acierto=0.0
-    test_data = sess.run(label_batch_test)
-    test_hoped = sess.run(example_batch_test_predicted)
+    test_datos = sess.run(label_batch_test)
+    test_esperado = sess.run(example_batch_test_predicted)
 
-    for real_data, hoped in zip(test_data, test_hoped):
+    for real_data, hoped in zip(test_datos, test_esperado):
         if np.argmax(real_data) != np.argmax(hoped):
             error += 1
-        else:
-            acierto+=1
         total += 1
-    print error
-    print acierto
     fallo = error / total * 100
-    acierto=acierto/total * 100
-    print("El porcentaje de error es: ", fallo, "% y el de exito ", acierto, "%")
+    print("El porcentaje de error es: ", fallo, "% y el de exito ", (100-fallo), "%")
+    print total
     tr_handle, = plot.plot(error_train)
     #plot.show()
     vl_handle, = plot.plot(error_valid)
@@ -150,9 +155,9 @@ with tf.Session() as sess:
 
     plot.legend(handles=[tr_handle, vl_handle],
                 labels=['Error entrenamiento', 'Error validacion'])
-    plot.title("Learning rate = 0.01")
+    plot.title("Grafica Entrenamiento y Validacion")
+    plot.ylabel("Error")
     plot.show()
-    plot.savefig('Grafica_entrenamiento.png')
 
     coord.request_stop()
     coord.join(threads)
